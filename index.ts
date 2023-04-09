@@ -1,31 +1,33 @@
 #!/usr/bin/env node
-import { execSync } from 'child_process';
+import { execSync } from "child_process";
 
-import enquirer from 'enquirer';
-import ora from 'ora';
-import parseArgs from 'yargs-parser';
-import { ChatGPTAPI, ChatMessage } from 'chatgpt';
-import * as dotenv from 'dotenv';
-dotenv.config()
+import enquirer from "enquirer";
+import ora from "ora";
+import parseArgs from "yargs-parser";
+import { ChatGPTAPI, ChatMessage } from "chatgpt";
+import * as dotenv from "dotenv";
+dotenv.config();
 
-const CUSTOM_MESSAGE_OPTION: string = '[write own message]...';
-const MORE_OPTION: string = '[ask for more ideas]...';
+const CUSTOM_MESSAGE_OPTION: string = "[write own message]...";
+const MORE_OPTION: string = "[ask for more ideas]...";
 const spinner = ora();
 
 const argv = parseArgs(process.argv.slice(2));
 
 const conventionalCommit = argv.conventional || argv.c;
-const CONVENTIONAL_REQUEST = conventionalCommit ? `following conventional commit (<type>: <subject>)` : '';
+const CONVENTIONAL_REQUEST = conventionalCommit
+  ? `following conventional commit (<type>: <subject>)`
+  : "";
 
-let diff = '';
+let diff = "";
 try {
-  diff = execSync('git diff --cached').toString();
+  diff = execSync("git diff --cached").toString();
   if (!diff) {
-    console.log('No changes to commit.');
+    console.log("No changes to commit.");
     process.exit(0);
   }
 } catch (e) {
-  console.log('Failed to run git diff --cached');
+  console.log("Failed to run git diff --cached");
   process.exit(1);
 }
 
@@ -33,8 +35,8 @@ run(diff)
   .then(() => {
     process.exit(0);
   })
-  .catch(e => {
-    console.log('Error: ' + e.message);
+  .catch((e) => {
+    console.log("Error: " + e.message);
     if ((e as any).details) {
       console.log((e as any).details);
     }
@@ -42,18 +44,18 @@ run(diff)
   });
 
 async function run(diff: string) {
-  spinner.start('Authorizing with OpenAI...');
+  spinner.start("Authorizing with OpenAI...");
   const api: ChatGPTAPI = new ChatGPTAPI({
-    apiKey: process.env.OPENAI_API_KEY
-  })
+    apiKey: process.env.OPENAI_API_KEY,
+  });
   spinner.stop();
 
   const firstRequest: string =
     `Suggest me a few good commit messages for my commit ${CONVENTIONAL_REQUEST}.\n` +
-    '```\n' +
+    "```\n" +
     diff +
-    '\n' +
-    '```\n\n' +
+    "\n" +
+    "```\n\n" +
     `Output results as a list, not more than 6 items.`;
 
   let firstRequestSent: boolean = false;
@@ -68,40 +70,45 @@ async function run(diff: string) {
 
     try {
       const answer = await enquirer.prompt<{ message: string }>({
-        type: 'select',
-        name: 'message',
-        message: 'Pick a message',
+        type: "select",
+        name: "message",
+        message: "Pick a message",
         choices,
       });
 
       firstRequestSent = true;
 
       if (answer.message === CUSTOM_MESSAGE_OPTION) {
-        execSync('git commit', { stdio: 'inherit' });
+        execSync("git commit", { stdio: "inherit" });
         return;
       } else if (answer.message === MORE_OPTION) {
         continue;
       } else {
-        execSync(`git commit -m '${escapeCommitMessage(answer.message)}'`, { stdio: 'inherit' });
+        execSync(`git commit -m '${escapeCommitMessage(answer.message)}'`, {
+          stdio: "inherit",
+        });
         return;
       }
     } catch (e) {
-      console.log('Aborted.');
+      console.log("Aborted.");
       console.log(e);
       process.exit(1);
     }
   }
 }
 
-async function getMessages(api: ChatGPTAPI, request: string): Promise<string[]> {
-  spinner.start('Asking ChatGPT 🤖 for commit messages...');
+async function getMessages(
+  api: ChatGPTAPI,
+  request: string
+): Promise<string[]> {
+  spinner.start("Asking ChatGPT 🤖 for commit messages...");
 
   // send a message and wait for the response
   try {
-    const response: ChatMessage = await api.sendMessage(request)
+    const response: ChatMessage = await api.sendMessage(request);
     const messages: string[] = response.text
-      .split('\n')
-      .filter(line => line.match(/^(\d+\.|-|\*)\s+/))
+      .split("\n")
+      .filter((line) => line.match(/^(\d+\.|-|\*)\s+/))
       .map(normalizeMessage);
 
     spinner.stop();
@@ -110,18 +117,18 @@ async function getMessages(api: ChatGPTAPI, request: string): Promise<string[]> 
     return messages;
   } catch (e) {
     spinner.stop();
-    console.log("There was a problem connecting with ChatGPT.")
+    console.log("There was a problem connecting with ChatGPT.");
   }
 }
 
 function normalizeMessage(line: string): string {
   return line
-    .replace(/^(\d+\.|-|\*)\s+/, '')
-    .replace(/^[`"']/, '')
-    .replace(/[`"']$/, '')
-    .replace(/[`"']:/, ':') // sometimes it formats messages like this: `feat`: message
-    .replace(/:[`"']/, ':') // sometimes it formats messages like this: `feat:` message
-    .replace(/\\n/g, '');
+    .replace(/^(\d+\.|-|\*)\s+/, "")
+    .replace(/^[`"']/, "")
+    .replace(/[`"']$/, "")
+    .replace(/[`"']:/, ":") // sometimes it formats messages like this: `feat`: message
+    .replace(/:[`"']/, ":") // sometimes it formats messages like this: `feat:` message
+    .replace(/\\n/g, "");
 }
 
 function escapeCommitMessage(message: string): string {
